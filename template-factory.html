@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Content Template Factory | GrowMind-AI</title>
+<style>
+:root{color-scheme:dark;--lime:#d0fb79;--muted:#afc1bd;--line:#46595c}
+*{box-sizing:border-box}
+body{margin:0;background:#10181b;color:#f1f7ee;font:1rem/1.55 system-ui,sans-serif}
+main,header{width:min(70rem,calc(100% - 2rem));margin:auto}
+header{padding:1rem 0;border-bottom:1px solid var(--line);font-weight:800}
+a{color:var(--lime)}
+main{padding:2rem 0}
+h1{font-size:clamp(2rem,6vw,4rem);line-height:1.05;margin:.5rem 0}
+p{color:var(--muted)}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:1.25rem}
+section,article{padding:1rem;background:#192529;border:1px solid var(--line);border-radius:.75rem}
+article{margin-block:.75rem;overflow-wrap:anywhere}
+article p{white-space:pre-wrap}
+h2,h3{margin:.25rem 0}
+label{display:block;margin:.75rem 0}
+input,textarea,button{font:inherit}
+input,textarea{display:block;width:100%;padding:.55rem;background:#10181b;border:1px solid var(--line);border-radius:.4rem}
+textarea{min-height:9rem;resize:vertical}
+button{background:var(--lime);color:#10181b;border:0;border-radius:.4rem;padding:.5rem .75rem;font-weight:700;cursor:pointer;margin:.2rem .35rem .2rem 0}
+button.secondary{background:#34474b;color:white}
+:focus-visible{outline:2px solid var(--lime);outline-offset:3px}
+#status{min-height:1.6em}
+@media(max-width:760px){.layout{grid-template-columns:1fr}}
+</style>
+<header><a href="./dashboard-header.html">GrowMind-AI Dashboard</a></header>
+<main>
+  <h1>Content Template Factory</h1>
+  <p>Save posts privately, choose which templates to share, and adapt a copy of any shared template.</p>
+  <p>Preview data stays in this browser. Sharing between accounts requires the GrowMind-AI backend.</p>
+  <p id="status" role="status"></p>
+  <div class="layout">
+    <div>
+      <section aria-labelledby="editor-heading">
+        <h2 id="editor-heading">Template editor</h2>
+        <form id="editor">
+          <label>Template title <input id="title" required maxlength="90"></label>
+          <label>Post content <textarea id="body" required maxlength="4000"></textarea></label>
+          <button>Save private copy</button>
+        </form>
+      </section>
+      <section aria-labelledby="saved-heading">
+        <h2 id="saved-heading">My templates</h2>
+        <div id="saved"></div>
+      </section>
+    </div>
+    <section aria-labelledby="library-heading">
+      <h2 id="library-heading">Community library</h2>
+      <label>Search templates <input id="search" type="search"></label>
+      <div id="library"></div>
+    </section>
+  </div>
+</main>
+<script>
+const key = 'growmind-template-factory-v1';
+const samples = [
+  {title: 'Open house announcement', body: 'Tour [address] this [day] from [time]. Come see [standout feature] and ask us about the neighborhood. Message us for details.', credit: 'GrowMind-AI sample'},
+  {title: 'Customer spotlight', body: 'Meet [customer or business]. Here’s how they tackled [challenge] and achieved [result]. What would you try first?', credit: 'GrowMind-AI sample'}
+];
+const saved = document.querySelector('#saved');
+const library = document.querySelector('#library');
+const status = document.querySelector('#status');
+const title = document.querySelector('#title');
+const body = document.querySelector('#body');
+const search = document.querySelector('#search');
+let records = [];
+let sourceCredit = '';
+
+try {
+  const stored = JSON.parse(localStorage.getItem(key) ?? '[]');
+  if (!Array.isArray(stored) || stored.some(item => !item ||
+      typeof item.title !== 'string' || typeof item.body !== 'string' ||
+      typeof item.credit !== 'string' || typeof item.shared !== 'boolean')) {
+    throw new Error('Invalid saved templates');
+  }
+  records = stored;
+} catch {
+  status.textContent = 'Saved templates could not be loaded. Reload or try a different browser before saving.';
+}
+
+function save(next, message) {
+  try {
+    localStorage.setItem(key, JSON.stringify(next));
+  } catch {
+    status.textContent = 'Unable to save. Check browser storage settings or available space.';
+    return false;
+  }
+  records = next;
+  render();
+  status.textContent = message;
+  return true;
+}
+
+function button(label, handler) {
+  const element = document.createElement('button');
+  element.type = 'button';
+  element.className = 'secondary';
+  element.textContent = label;
+  element.addEventListener('click', handler);
+  return element;
+}
+
+function card(item) {
+  const article = document.createElement('article');
+  const heading = document.createElement('h3');
+  heading.textContent = item.title;
+  const copy = document.createElement('p');
+  copy.textContent = item.body;
+  const credit = document.createElement('small');
+  credit.textContent = item.credit ? 'Source: ' + item.credit : 'Your template';
+  article.append(heading, copy, credit, document.createElement('br'));
+  return article;
+}
+
+function render() {
+  saved.replaceChildren();
+  library.replaceChildren();
+  if (!records.length) saved.textContent = 'Your saved templates will appear here.';
+  records.forEach((item, index) => {
+    const article = card(item);
+    article.append(button(item.shared ? 'Make private' : 'Share to preview library', () => {
+      const updated = records.map((record, i) => i === index ? {...record, shared: !record.shared} : record);
+      save(updated, item.shared ? 'Removed from the preview library.' : 'Shared in the preview library.');
+    }));
+    saved.append(article);
+  });
+  const query = search.value.trim().toLowerCase();
+  const matches = [...samples, ...records.filter(item => item.shared)].filter(item =>
+    (item.title + ' ' + item.body).toLowerCase().includes(query));
+  if (!matches.length) library.textContent = 'No templates match your search.';
+  matches.forEach(item => {
+    const article = card(item);
+    article.append(button('Use template', () => {
+      if ((title.value.trim() || body.value.trim()) && !window.confirm('Replace the current unsaved draft?')) return;
+      title.value = item.title;
+      body.value = item.body;
+      sourceCredit = item.credit || 'Your shared template';
+      title.focus();
+      status.textContent = 'Template loaded into the editor. Save a private copy when ready.';
+    }));
+    library.append(article);
+  });
+}
+
+document.querySelector('#editor').addEventListener('submit', event => {
+  event.preventDefault();
+  const name = title.value.trim();
+  const content = body.value.trim();
+  if (!name || !content) {
+    status.textContent = 'Enter a title and post content.';
+    return;
+  }
+  if (save([...records, {title: name, body: content, credit: sourceCredit, shared: false}], 'Private template saved.')) {
+    event.currentTarget.reset();
+    sourceCredit = '';
+  }
+});
+search.addEventListener('input', render);
+render();
+</script>
+</html>
